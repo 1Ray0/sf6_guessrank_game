@@ -130,7 +130,7 @@
     pointer-events: none;
   }
 
-  /* Masks: name+MR rows only, NOT HP bar */
+  /* Masks */
   .mask {
     position: absolute;
     background: #000;
@@ -510,6 +510,10 @@
 
 <script src="https://www.youtube.com/iframe_api"></script>
 <script>
+// 若頁面重新整理時 YT API 已存在，直接初始化
+if (window.YT && window.YT.Player) {
+  initPlayer();
+}
 let currentQ = 0;
 let score = 0;
 let answered = false;
@@ -520,20 +524,24 @@ let progressTimer = null;
 let isMuted = false;
 
 // ── YouTube IFrame API ──
-function onYouTubeIframeAPIReady() {
+function onYouTubeIframeAPIReady() { initPlayer(); }
+
+function initPlayer() {
   player = new YT.Player('ytPlayer', {
     height: '100%',
     width: '100%',
     videoId: '',
     playerVars: {
       autoplay: 1,
-      controls: 0,       // 隱藏原生控制列
-      disablekb: 1,      // 停用鍵盤
-      fs: 0,             // 隱藏全螢幕
-      iv_load_policy: 3, // 隱藏標註
+      controls: 0,
+      disablekb: 1,
+      fs: 0,
+      iv_load_policy: 3,
       modestbranding: 1,
       rel: 0,
       showinfo: 0,
+      title: 0,
+      playsinline: 1,
     },
     events: {
       onReady: onPlayerReady,
