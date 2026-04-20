@@ -66,7 +66,7 @@ const QUESTIONS = [
     videoId: "ONvHHvsJmzA",
     leftName: "BLANKA",
     rightName: "DEEJAY",
-    leftRank: "mr1900+",
-    rightRank: "mr1900+",
+    leftRank: "mr1800+",
+    rightRank: "mr1800+",
   },
 ];
