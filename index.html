@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SF6 猜牌位</title>
+<script src="questions.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;700&family=Noto+Sans+TC:wght@400;700&display=swap');
+
+  :root {
+    --sf-red: #e53e3e;
+    --sf-blue: #3182ce;
+    --sf-gold: #d4af37;
+    --sf-dark: #0a0a0f;
+    --sf-panel: #12121a;
+    --sf-border: #2a2a3a;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    background: var(--sf-dark);
+    color: #fff;
+    font-family: 'Noto Sans TC', sans-serif;
+    display: flex;
+    flex-direction: column;
+    background-image:
+      radial-gradient(ellipse at 20% 50%, rgba(229,62,62,0.08) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 50%, rgba(49,130,206,0.08) 0%, transparent 60%);
+  }
+
+  /* ── Header ── */
+  header {
+    text-align: center;
+    padding: 10px 20px 8px;
+    border-bottom: 2px solid var(--sf-border);
+    background: linear-gradient(180deg, #1a0a0a 0%, var(--sf-dark) 100%);
+    position: relative;
+    flex-shrink: 0;
+  }
+  header::after {
+    content: '';
+    position: absolute;
+    bottom: -2px; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--sf-red), var(--sf-gold), var(--sf-blue));
+  }
+  .header-title {
+    font-family: 'Oswald', sans-serif;
+    font-size: clamp(1.4rem, 4vw, 2.2rem);
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    background: linear-gradient(135deg, #fff 30%, var(--sf-gold) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .score-bar {
+    margin-top: 8px;
+    font-size: 0.9rem;
+    color: #aaa;
+    letter-spacing: 1px;
+  }
+  .score-bar span {
+    color: var(--sf-gold);
+    font-weight: 700;
+    font-size: 1.1rem;
+  }
+
+  /* ── Main layout ── */
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 16px 10px;
+    max-width: 900px;
+    width: 100%;
+    margin: 0 auto;
+    overflow: hidden;
+  }
+
+  /* ── Question counter ── */
+  .question-info {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    padding: 0 4px;
+    flex-shrink: 0;
+  }
+  .q-counter {
+    font-family: 'Oswald', sans-serif;
+    font-size: 1rem;
+    color: #888;
+    letter-spacing: 2px;
+  }
+  .q-counter strong { color: var(--sf-gold); font-size: 1.2rem; }
+
+  /* ── Video area ── */
+  .video-wrapper {
+    width: 100%;
+    position: relative;
+    background: #000;
+    border: 2px solid var(--sf-border);
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 0 40px rgba(0,0,0,0.8);
+    flex-shrink: 1;
+  }
+  .video-aspect {
+    position: relative;
+    padding-top: 56.25%;
+  }
+  .video-aspect #ytPlayer {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    border: none;
+    pointer-events: none; /* 防止點到 YT 原生 UI */
+  }
+
+  /* Masks: name+MR rows only, NOT HP bar */
+  .mask {
+    position: absolute;
+    background: #000;
+    z-index: 10;
+    pointer-events: none;
+  }
+  /* Left: MR數字 + PC + 玩家名 */
+  .mask-left-name  { top: 9%;  left: 0; width: 22%; height: 5%; }
+  /* Left: 牌位文字 ULTIMATE MASTER */
+  .mask-left-rank  { top: 14%;  left: 0; width: 12%; height: 7%; }
+  /* Right: 玩家名 + PC + MR數字 */
+  .mask-right-name { top: 9%;  right: 0; width: 22%; height: 5%; }
+  /* Right: 牌位文字 */
+  .mask-right-rank { top: 14%;  right: 0; width: 12%; height: 7%; }
+
+  /* ── Custom video controls (overlay inside video) ── */
+  .video-overlay-controls {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    z-index: 20;
+    padding: 28px 12px 8px;
+    background: linear-gradient(transparent, rgba(0,0,0,0.75));
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .video-wrapper:hover .video-overlay-controls { opacity: 1; }
+  .vc-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  /* click-overlay: catches clicks for play/pause anywhere on video */
+  .video-click-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 15;
+    cursor: pointer;
+  }
+  .vc-progress {
+    flex: 1;
+    height: 4px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 2px;
+    cursor: pointer;
+    position: relative;
+    transition: height 0.1s;
+  }
+  .vc-progress:hover { height: 6px; }
+  .vc-progress-fill {
+    height: 100%;
+    background: var(--sf-gold);
+    border-radius: 2px;
+    width: 0%;
+    pointer-events: none;
+  }
+  .vc-btn {
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 1.1rem;
+    width: 28px; height: 28px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    opacity: 0.85;
+    transition: opacity 0.1s;
+  }
+  .vc-btn:hover { opacity: 1; }
+  .vc-volume {
+    width: 65px;
+    accent-color: var(--sf-gold);
+    cursor: pointer;
+  }
+  .vc-time {
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.7);
+    font-family: 'Oswald', sans-serif;
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+  /* pause icon overlay on click */
+  .pause-flash {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 3rem;
+    color: rgba(255,255,255,0.8);
+    pointer-events: none;
+    z-index: 25;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .pause-flash.show { opacity: 1; }
+
+  /* ── Which side indicator ── */
+  .target-indicator {
+    margin: 8px 0 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.1rem;
+    letter-spacing: 2px;
+    color: #ccc;
+  }
+  .side-badge {
+    padding: 4px 18px;
+    border-radius: 3px;
+    font-size: 1.3rem;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .side-badge.left  { background: var(--sf-red);  color: #fff; box-shadow: 0 0 16px rgba(229,62,62,0.6); }
+  .side-badge.right { background: var(--sf-blue); color: #fff; box-shadow: 0 0 16px rgba(49,130,206,0.6); }
+  @keyframes pulse {
+    0%,100% { transform: scale(1); opacity: 1; }
+    50%      { transform: scale(1.06); opacity: 0.85; }
+  }
+
+  /* ── Rank buttons ── */
+  .rank-grid {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-top: 8px;
+    flex-shrink: 0;
+  }
+  .rank-btn {
+    padding: 10px 8px;
+    border: 2px solid transparent;
+    border-radius: 4px;
+    background: var(--sf-panel); /* 預設，會被 JS inline style 覆蓋 */
+    color: #fff;
+    font-family: 'Oswald', sans-serif;
+    font-size: clamp(0.85rem, 2.5vw, 1.05rem);
+    font-weight: 700;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+  }
+  .rank-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    filter: brightness(1.2);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  }
+  .rank-btn:active:not(:disabled) { transform: translateY(0); }
+  .rank-btn:disabled { cursor: not-allowed; opacity: 0.7; }
+  .rank-btn.correct {
+    background: #14532d;
+    border-color: #22c55e;
+    color: #86efac;
+    box-shadow: 0 0 20px rgba(34,197,94,0.4);
+  }
+  .rank-btn.wrong {
+    background: #450a0a;
+    border-color: #ef4444;
+    color: #fca5a5;
+  }
+  .rank-btn.reveal-correct {
+    background: #14532d;
+    border-color: #22c55e;
+    color: #86efac;
+    box-shadow: 0 0 20px rgba(34,197,94,0.4);
+  }
+
+  /* ── Result banner ── */
+  .result-banner {
+    width: 100%;
+    margin-top: 8px;
+    padding: 16px 20px;
+    border-radius: 4px;
+    text-align: center;
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.4rem;
+    letter-spacing: 3px;
+    display: none;
+    animation: slideIn 0.3s ease;
+  }
+  .result-banner.show { display: block; }
+  .result-banner.correct-banner {
+    background: linear-gradient(135deg, #14532d, #166534);
+    border: 2px solid #22c55e;
+    color: #86efac;
+    box-shadow: 0 0 30px rgba(34,197,94,0.3);
+  }
+  .result-banner.wrong-banner {
+    background: linear-gradient(135deg, #450a0a, #7f1d1d);
+    border: 2px solid #ef4444;
+    color: #fca5a5;
+    box-shadow: 0 0 30px rgba(239,68,68,0.3);
+  }
+  .result-sub {
+    font-size: 0.9rem;
+    margin-top: 6px;
+    color: inherit;
+    opacity: 0.8;
+    font-family: 'Noto Sans TC', sans-serif;
+    letter-spacing: 1px;
+  }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Both answers reveal */
+
+  /* ── Next button ── */
+  .next-btn {
+    margin-top: 8px;
+    padding: 14px 48px;
+    background: linear-gradient(135deg, var(--sf-gold), #b8960c);
+    border: none;
+    border-radius: 4px;
+    color: #000;
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.2rem;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    cursor: pointer;
+    display: none;
+    transition: all 0.15s;
+    box-shadow: 0 4px 20px rgba(212,175,55,0.4);
+  }
+  .next-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(212,175,55,0.5); }
+  .next-btn.show { display: inline-block; }
+
+  /* ── Finish screen ── */
+  .finish-screen {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 40px 20px;
+    text-align: center;
+  }
+  .finish-screen.show { display: flex; }
+  .finish-title {
+    font-family: 'Oswald', sans-serif;
+    font-size: 2.5rem;
+    letter-spacing: 4px;
+    background: linear-gradient(135deg, #fff, var(--sf-gold));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .finish-score {
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.5rem;
+    color: var(--sf-gold);
+  }
+  .restart-btn {
+    padding: 12px 40px;
+    background: var(--sf-red);
+    border: none;
+    border-radius: 4px;
+    color: #fff;
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .restart-btn:hover { background: #c53030; transform: translateY(-2px); }
+
+  /* ── Decorative corner lines ── */
+  .corner-deco {
+    position: fixed;
+    width: 60px; height: 60px;
+    pointer-events: none;
+    opacity: 0.3;
+  }
+  .corner-deco.tl { top: 10px; left: 10px; border-top: 2px solid var(--sf-gold); border-left: 2px solid var(--sf-gold); }
+  .corner-deco.tr { top: 10px; right: 10px; border-top: 2px solid var(--sf-gold); border-right: 2px solid var(--sf-gold); }
+  .corner-deco.bl { bottom: 10px; left: 10px; border-bottom: 2px solid var(--sf-gold); border-left: 2px solid var(--sf-gold); }
+  .corner-deco.br { bottom: 10px; right: 10px; border-bottom: 2px solid var(--sf-gold); border-right: 2px solid var(--sf-gold); }
+
+  @media (max-width: 600px) {
+    .rank-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="corner-deco tl"></div>
+<div class="corner-deco tr"></div>
+<div class="corner-deco bl"></div>
+<div class="corner-deco br"></div>
+
+<header>
+  <div class="header-title">⚡ SF6 猜牌位</div>
+  <div class="score-bar">得分 <span id="scoreDisplay">0</span> / <span id="totalDisplay">0</span></div>
+</header>
+
+<div class="main">
+
+  <!-- Game area -->
+  <div id="gameArea" style="width:100%;display:flex;flex-direction:column;align-items:center;">
+
+    <div class="question-info">
+      <div class="q-counter">第 <strong id="qNum">1</strong> 題 / <strong id="qTotal">?</strong></div>
+    </div>
+
+    <!-- Video -->
+    <div class="video-wrapper">
+      <div class="video-aspect">
+        <div id="ytPlayer"></div>
+        <div class="mask mask-left-name"></div>
+        <div class="mask mask-left-rank"></div>
+        <div class="mask mask-right-name"></div>
+        <div class="mask mask-right-rank"></div>
+        <!-- click anywhere to play/pause -->
+        <div class="video-click-overlay" id="videoClickOverlay"></div>
+        <!-- pause flash icon -->
+        <div class="pause-flash" id="pauseFlash">⏸</div>
+        <!-- overlay controls -->
+        <div class="video-overlay-controls">
+          <div class="vc-row">
+            <div class="vc-progress" id="vcProgress">
+              <div class="vc-progress-fill" id="vcFill"></div>
+            </div>
+          </div>
+          <div class="vc-row">
+            <button class="vc-btn" id="vcPlayPause">▶</button>
+            <span class="vc-time" id="vcTime">0:00</span>
+            <div style="flex:1"></div>
+            <input class="vc-volume" id="vcVolume" type="range" min="0" max="100" value="80">
+            <button class="vc-btn" id="vcMute">🔊</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Which side to guess -->
+    <div class="target-indicator">
+      猜
+      <span id="sideBadge" class="side-badge left">???</span>
+      玩家的牌位
+    </div>
+
+    <!-- Rank buttons -->
+    <div class="rank-grid" id="rankGrid"></div>
+
+    <!-- Result -->
+    <div class="result-banner" id="resultBanner">
+      <div id="resultText"></div>
+      <div class="result-sub" id="resultSub"></div>
+    </div>
+
+    <!-- Next -->
+    <button class="next-btn" id="nextBtn" onclick="nextQuestion()">
+      下一題 ▶
+    </button>
+
+  </div>
+
+  <!-- Finish screen -->
+  <div class="finish-screen" id="finishScreen">
+    <div class="finish-title">GAME OVER</div>
+    <div class="finish-score" id="finishScore"></div>
+    <div style="color:#888;font-size:0.95rem;" id="finishMsg"></div>
+    <button class="restart-btn" onclick="restart()">再玩一次</button>
+  </div>
+
+</div>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+let currentQ = 0;
+let score = 0;
+let answered = false;
+let targetSide = 'left';
+let player = null;
+let playerReady = false;
+let progressTimer = null;
+let isMuted = false;
+
+// ── YouTube IFrame API ──
+function onYouTubeIframeAPIReady() {
+  player = new YT.Player('ytPlayer', {
+    height: '100%',
+    width: '100%',
+    videoId: '',
+    playerVars: {
+      autoplay: 1,
+      controls: 0,       // 隱藏原生控制列
+      disablekb: 1,      // 停用鍵盤
+      fs: 0,             // 隱藏全螢幕
+      iv_load_policy: 3, // 隱藏標註
+      modestbranding: 1,
+      rel: 0,
+      showinfo: 0,
+    },
+    events: {
+      onReady: onPlayerReady,
+      onStateChange: onPlayerStateChange,
+    }
+  });
+}
+
+function onPlayerReady(e) {
+  playerReady = true;
+  e.target.setVolume(80);
+  setupControls();
+  if (!QUESTIONS || QUESTIONS.length === 0) {
+    document.getElementById('gameArea').innerHTML =
+      '<p style="color:#f87171;font-size:1.2rem;margin-top:40px;">⚠ questions.js 中沒有題目，請先新增題目。</p>';
+    return;
+  }
+  loadQuestion();
+}
+
+function onPlayerStateChange(e) {
+  const btn = document.getElementById('vcPlayPause');
+  if (e.data === YT.PlayerState.PLAYING) {
+    btn.textContent = '⏸';
+    startProgressTimer();
+  } else {
+    btn.textContent = '▶';
+  }
+}
+
+function startProgressTimer() {
+  clearInterval(progressTimer);
+  progressTimer = setInterval(() => {
+    if (!player || !playerReady) return;
+    const dur = player.getDuration();
+    const cur = player.getCurrentTime();
+    if (dur > 0) {
+      document.getElementById('vcFill').style.width = (cur / dur * 100) + '%';
+    }
+    document.getElementById('vcTime').textContent = formatTime(cur);
+  }, 500);
+}
+
+function formatTime(s) {
+  s = Math.floor(s);
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return m + ':' + String(sec).padStart(2, '0');
+}
+
+function togglePlayPause() {
+  if (!player) return;
+  const state = player.getPlayerState();
+  if (state === YT.PlayerState.PLAYING) {
+    player.pauseVideo();
+    showFlash('⏸');
+  } else {
+    player.playVideo();
+    showFlash('▶');
+  }
+}
+
+function showFlash(icon) {
+  const el = document.getElementById('pauseFlash');
+  el.textContent = icon;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 500);
+}
+
+function setupControls() {
+  // Click overlay → play/pause
+  document.getElementById('videoClickOverlay').onclick = togglePlayPause;
+
+  // Play/pause button
+  document.getElementById('vcPlayPause').onclick = (e) => {
+    e.stopPropagation();
+    togglePlayPause();
+  };
+
+  // Progress bar click
+  document.getElementById('vcProgress').onclick = (e) => {
+    if (!player) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = (e.clientX - rect.left) / rect.width;
+    player.seekTo(player.getDuration() * ratio, true);
+  };
+
+  // Volume
+  document.getElementById('vcVolume').oninput = (e) => {
+    if (!player) return;
+    const v = parseInt(e.target.value);
+    player.setVolume(v);
+    if (v === 0) { isMuted = true; document.getElementById('vcMute').textContent = '🔇'; }
+    else { isMuted = false; document.getElementById('vcMute').textContent = '🔊'; }
+  };
+
+  // Mute toggle
+  document.getElementById('vcMute').onclick = () => {
+    if (!player) return;
+    if (isMuted) {
+      player.unMute();
+      player.setVolume(parseInt(document.getElementById('vcVolume').value) || 80);
+      isMuted = false;
+      document.getElementById('vcMute').textContent = '🔊';
+    } else {
+      player.mute();
+      isMuted = true;
+      document.getElementById('vcMute').textContent = '🔇';
+    }
+  };
+}
+
+// ── Game logic ──
+function getRankLabel(id) {
+  const r = RANKS.find(r => r.id === id);
+  return r ? r.label : id;
+}
+function getRankColor(id) {
+  const r = RANKS.find(r => r.id === id);
+  return r ? r.color : '#fff';
+}
+
+function loadQuestion() {
+  answered = false;
+  const q = QUESTIONS[currentQ];
+
+  document.getElementById('qNum').textContent = currentQ + 1;
+  document.getElementById('qTotal').textContent = QUESTIONS.length;
+  document.getElementById('totalDisplay').textContent = QUESTIONS.length;
+
+  // Random side
+  targetSide = Math.random() < 0.5 ? 'left' : 'right';
+  const badge = document.getElementById('sideBadge');
+  if (targetSide === 'left') {
+    badge.textContent = (q.leftName || 'LEFT') + ' ◀';
+    badge.className = 'side-badge left';
+  } else {
+    badge.textContent = '▶ ' + (q.rightName || 'RIGHT');
+    badge.className = 'side-badge right';
+  }
+
+  // Load video via API (high quality)
+  if (playerReady) {
+    player.loadVideoById({ videoId: q.videoId, suggestedQuality: 'hd1080' });
+  }
+
+  // Reset progress
+  document.getElementById('vcFill').style.width = '0%';
+  document.getElementById('vcTime').textContent = '0:00';
+
+  // Rank buttons
+  const grid = document.getElementById('rankGrid');
+  grid.innerHTML = '';
+  RANKS.forEach(rank => {
+    const btn = document.createElement('button');
+    btn.className = 'rank-btn';
+    btn.textContent = rank.label;
+    btn.style.background = rank.bg;
+    btn.style.borderColor = rank.color + '88';
+    btn.style.color = rank.color;
+    btn.dataset.rankId = rank.id;
+    btn.onclick = () => guess(rank.id);
+    if (rank.id === 'legend') btn.style.gridColumn = '1 / -1';
+    grid.appendChild(btn);
+  });
+
+  document.getElementById('resultBanner').className = 'result-banner';
+  document.getElementById('nextBtn').className = 'next-btn';
+  // 新題目恢復遮罩
+  document.querySelectorAll('.mask').forEach(m => m.style.display = '');
+}
+
+function guess(selectedId) {
+  if (answered) return;
+  answered = true;
+
+  const q = QUESTIONS[currentQ];
+  const correctId = targetSide === 'left' ? q.leftRank : q.rightRank;
+  const isCorrect = selectedId === correctId;
+
+  if (isCorrect) score++;
+  document.getElementById('scoreDisplay').textContent = score;
+
+  document.querySelectorAll('.rank-btn').forEach(btn => {
+    btn.disabled = true;
+    if (btn.dataset.rankId === selectedId && isCorrect)  btn.classList.add('correct');
+    if (btn.dataset.rankId === selectedId && !isCorrect) btn.classList.add('wrong');
+    if (btn.dataset.rankId === correctId)                btn.classList.add('reveal-correct');
+  });
+
+  const banner = document.getElementById('resultBanner');
+  if (isCorrect) {
+    banner.className = 'result-banner correct-banner show';
+    document.getElementById('resultText').textContent = '✔ 正確！';
+    document.getElementById('resultSub').textContent = `${getRankLabel(correctId)}，猜對了！`;
+  } else {
+    banner.className = 'result-banner wrong-banner show';
+    document.getElementById('resultText').textContent = '✘ 答錯了';
+    document.getElementById('resultSub').textContent = `正確答案是：${getRankLabel(correctId)}`;
+  }
+
+  document.getElementById('nextBtn').className = 'next-btn show';
+  // 揭曉答案後移除遮罩
+  document.querySelectorAll('.mask').forEach(m => m.style.display = 'none');
+}
+
+function nextQuestion() {
+  currentQ++;
+  if (currentQ >= QUESTIONS.length) showFinish();
+  else loadQuestion();
+}
+
+function showFinish() {
+  clearInterval(progressTimer);
+  if (playerReady) player.stopVideo();
+  document.getElementById('gameArea').style.display = 'none';
+  document.getElementById('finishScreen').className = 'finish-screen show';
+  document.getElementById('finishScore').textContent = `得分 ${score} / ${QUESTIONS.length}`;
+  const pct = score / QUESTIONS.length;
+  const msgs = ['還需要多看一些比賽喔…','繼續加油！多看多練！','不錯喔，有點水準！','超強！眼力很不錯！','完美！你是真正的段位鑑定師！'];
+  document.getElementById('finishMsg').textContent = msgs[Math.floor(pct * 4)];
+}
+
+function restart() {
+  currentQ = 0; score = 0;
+  document.getElementById('scoreDisplay').textContent = 0;
+  document.getElementById('gameArea').style.display = '';
+  document.getElementById('finishScreen').className = 'finish-screen';
+  loadQuestion();
+}
+</script>
+</body>
+</html>
